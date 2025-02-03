@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>도함수</title>
+  <!-- MathJax 로드 (LaTeX 렌더링) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+    defer
+  ></script>
+  <style>
+    body {
+      background-color: #fff;
+      color: #000;
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    h1, h2, h3 {
+      margin: 0.5em 0;
+    }
+    .hidden {
+      display: none;
+    }
+    .energy-bar {
+      width: 200px;
+      height: 20px;
+      border: 1px solid #000;
+      background-color: #fff;
+      margin: 10px 0;
+      position: relative;
+    }
+    .energy-fill {
+      height: 100%;
+      background-color: #000;
+      width: 100%;
+      transition: width 0.3s;
+    }
+    .question-container {
+      border: 1px solid #000;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .choices {
+      list-style: none;
+      padding: 0;
+    }
+    .choices li {
+      margin: 5px 0;
+      cursor: pointer;
+      border: 1px solid #000;
+      padding: 5px;
+      background-color: #fff;
+    }
+    .choices li:hover {
+      background-color: #eee;
+    }
+    .correct {
+      color: green;
+    }
+    .incorrect {
+      color: red;
+    }
+    #response {
+      white-space: pre-wrap;
+      border: 1px solid #000;
+      padding: 5px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>도함수 퀴즈 게임</h1>
+
+  <!-- 난이도 선택 및 이름 입력 화면 -->
+  <div id="start-screen">
+    <h2>난이도를 선택해주세요</h2>
+    <label>
+      <input type="radio" name="difficulty" value="top" /> 최상 (20초 시작, 문제당 20점)
+    </label><br />
+    <label>
+      <input type="radio" name="difficulty" value="high" /> 상 (30초 시작, 문제당 15점)
+    </label><br />
+    <label>
+      <input type="radio" name="difficulty" value="mid" /> 중 (40초 시작, 문제당 13점)
+    </label><br />
+    <label>
+      <input type="radio" name="difficulty" value="low" /> 하 (시간제한 없음, 문제당 10점)
+    </label><br /><br />
+    <label>이름: <input type="text" id="userName" /></label><br /><br />
+    <button onclick="startGame()">게임 시작</button>
+  </div>
+
+  <!-- 실제 퀴즈 화면 -->
+  <div id="game-screen" class="hidden">
+    <h2>게임 진행 중</h2>
+    <div>남은 기회: <span id="life">3</span></div>
+    <div>현재 점수: <span id="score">0</span></div>
+    <div>전체 경과 시간: <span id="elapsed">0</span>초</div>
+
+    <div class="energy-bar" id="energy-bar">
+      <div class="energy-fill" id="energy-fill"></div>
+    </div>
+
+    <div id="question-container" class="question-container"></div>
+    <div id="feedback"></div>
+    <button onclick="nextQuestion()">다음 문제</button>
+  </div>
+
+  <!-- 게임 종료 화면 -->
+  <div id="end-screen" class="hidden">
+    <h2>게임 종료</h2>
+    <p>최종 점수: <span id="final-score"></span></p>
+    <button onclick="sendScore()">점수전송</button>
+    <div id="response"></div>
+  </div>
+
+  <script>
+    // ----------------------------------------------------
+    // 1) 문제 데이터 (모두 수록)
+    // ----------------------------------------------------
+    // 각 항목:
+    //  {
+    //    problem: "...",   // 문제 내용 (MathJax LaTeX 포함 가능)
+    //    choices: ["...", "...", "...", "..."], // 보기
+    //    correctIndex: 0~3, // 정답 인덱스
+    //    correctFeedback: "..." // 틀렸을 때 표시할 정답 설명
+    //  }
+    // 실제 출제는 shuffleArray(questionData)를 통해 무작위 순서로 나타남.
+    // 보기 또한 매 문제마다 shuffle하여 표시.
+    const questionData = [
+      {
+        problem: "함수 \\(f(x) = 4\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(0\\)",
+          "\\(1\\)",
+          "\\(4\\)",
+          "\\(x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "상수함수의 미분은 항상 0입니다."
+      },
+      {
+        problem: "함수 \\(f(x) = -5\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(-5\\)",
+          "\\(-1\\)",
+          "\\(0\\)",
+          "\\(x\\)"
+        ],
+        correctIndex: 2,
+        correctFeedback: "상수함수의 미분은 0입니다."
+      },
+      {
+        problem: "함수 \\(f(x) = 10\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(0\\)",
+          "\\(1\\)",
+          "\\(10\\)",
+          "\\(x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "상수함수의 미분은 0입니다."
+      },
+      {
+        problem: "함수 \\(f(x) = x + 3\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(1\\)",
+          "\\(x\\)",
+          "\\(x + 3\\)",
+          "\\(0\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "x의 미분은 1, 상수 3은 0."
+      },
+      {
+        problem: "함수 \\(f(x) = 2x\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(2\\)",
+          "\\(x\\)",
+          "\\(0\\)",
+          "\\(2x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "2x를 미분하면 2."
+      },
+      {
+        problem: "함수 \\(f(x) = 3x + 4\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(3\\)",
+          "\\(4\\)",
+          "\\(0\\)",
+          "\\(3x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "3x는 3, 상수 4는 0."
+      },
+      {
+        problem: "함수 \\(f(x) = x^2 - 4\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(x^2\\)",
+          "\\(2x\\)",
+          "\\(2\\)",
+          "\\(-4\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "x^2 미분은 2x, -4 미분은 0."
+      },
+      {
+        problem: "함수 \\(f(x) = x^2 - 3x\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(x^2\\)",
+          "\\(2x - 3\\)",
+          "\\(x^2 - 3\\)",
+          "\\(2x\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "x^2 -> 2x, -3x -> -3 합쳐서 2x-3."
+      },
+      {
+        problem: "함수 \\(f(x) = x^2 - 5x\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(2x - 5\\)",
+          "\\(x^2 - 5\\)",
+          "\\(-5x\\)",
+          "\\(2x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "2x - 5"
+      },
+      {
+        problem: "함수 \\(f(x) = 4x^2\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(4\\)",
+          "\\(8x\\)",
+          "\\(4x\\)",
+          "\\(8x^2\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "4x^2 미분 => 8x"
+      },
+      {
+        problem: "함수 \\(f(x) = x^4\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(4x\\)",
+          "\\(4x^3\\)",
+          "\\(x^3\\)",
+          "미분값은 0"
+        ],
+        correctIndex: 1,
+        correctFeedback: "x^4 -> 4x^3."
+      },
+      {
+        problem: "함수 \\(f(x) = 2x + 5\\)에서 \\(f'(x)\\)와 \\(x=2\\)에서의 미분계수를 구하시오.",
+        choices: [
+          "\\((f'(x), f'(2)) = (2, 2)\\)",
+          "\\((f'(x), f'(2)) = (2x, 4)\\)",
+          "\\((f'(x), f'(2)) = (1, 1)\\)",
+          "\\((f'(x), f'(2)) = (0, 0)\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "도함수 2, 따라서 f'(2)도 2."
+      },
+      {
+        problem: "함수 \\(f(x) = 3x - 7\\)에서 \\(f'(x)\\)와 \\(x=2\\)에서의 미분계수를 구하시오.",
+        choices: [
+          "\\((f'(x), f'(2)) = (3, 3)\\)",
+          "\\((f'(x), f'(2)) = (3x, 6)\\)",
+          "\\((f'(x), f'(2)) = (1, 1)\\)",
+          "\\((f'(x), f'(2)) = (0, 0)\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "도함수=3, x=2 대입=>3."
+      },
+      {
+        problem: "함수 \\(f(x) = x^2\\)에서 \\(f'(x)\\)와 \\(x=2\\)에서의 미분계수를 구하시오.",
+        choices: [
+          "\\((2x, 4)\\)",
+          "\\((x^2, 4)\\)",
+          "\\((2, 2)\\)",
+          "\\((4, 4)\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "f'(x)=2x, f'(2)=4"
+      },
+      {
+        problem: "함수 \\(f(x) = x^2 + 2x\\)에서 \\(f'(x)\\)와 \\(x=2\\)에서의 미분계수를 구하시오.",
+        choices: [
+          "\\((2x + 2, 6)\\)",
+          "\\((x + 2, 4)\\)",
+          "\\((2x, 6)\\)",
+          "\\((2x + 2, 4)\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "f'(x)=2x+2, x=2 => 6."
+      },
+      {
+        problem: "함수 \\(f(x) = x^2 + x\\)에서 \\(f'(x)\\)와 \\(x=2\\)에서의 미분계수를 구하시오.",
+        choices: [
+          "\\((2x + 1, 5)\\)",
+          "\\((2x, 4)\\)",
+          "\\((x + 1, 3)\\)",
+          "\\((2, 2)\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "2x+1, 대입시 5."
+      },
+      {
+        problem: "함수 \\(y = -x^8\\)을 미분하시오.",
+        choices: [
+          "\\(-8x^7\\)",
+          "\\(8x^7\\)",
+          "\\(-7x^8\\)",
+          "\\(0\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "x^8의 미분=8x^7, 앞에 - 붙어서 -8x^7."
+      },
+      {
+        problem: "함수 \\(y = x^3\\)을 미분하시오.",
+        choices: [
+          "\\(3x^2\\)",
+          "\\(x^2\\)",
+          "\\(x^3\\)",
+          "\\(3x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "x^3 => 3x^2."
+      },
+      {
+        problem: "함수 \\(y = x^5\\)를 미분하시오.",
+        choices: [
+          "\\(5x^4\\)",
+          "\\(4x^5\\)",
+          "\\(x^4\\)",
+          "\\(0\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "x^5 => 5x^4."
+      },
+      {
+        problem: "함수 \\(y = x^9\\)를 미분하시오.",
+        choices: [
+          "\\(9x^8\\)",
+          "\\(8x^9\\)",
+          "\\(x^8\\)",
+          "\\(9x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "x^9 => 9x^8."
+      },
+      {
+        problem: "함수 \\(y = x^{10}\\)을 미분하시오.",
+        choices: [
+          "\\(10x^9\\)",
+          "\\(9x^{10}\\)",
+          "\\(10x\\)",
+          "\\(x^9\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "x^10 => 10x^9."
+      },
+      {
+        problem: "함수 \\(y = 6\\)을 미분하시오.",
+        choices: [
+          "\\(0\\)",
+          "\\(6\\)",
+          "\\(1\\)",
+          "\\(-6\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "상수 6 => 0."
+      },
+      {
+        problem: "함수 \\(f(x) = x^2 + x + 3\\)에 대하여 \\(f'(10)\\)의 값을 구하시오.",
+        choices: [
+          "\\(21\\)",
+          "\\(20\\)",
+          "\\(19\\)",
+          "\\(10\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "f'(x)=2x+1, 10대입=>21."
+      },
+      {
+        problem: "함수 \\(f(x) = 200x - \\dfrac{3}{2}x^2 - \\dfrac{1}{3}x^3\\)에 대하여 \\(f'(10)\\)의 값을 구하시오.",
+        choices: [
+          "\\(60\\)",
+          "\\(70\\)",
+          "\\(80\\)",
+          "\\(-70\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "도함수=200-3x-x^2, x=10 =>70."
+      },
+      {
+        problem: "함수 \\(f(x) = 7x^3 - ax + 3\\)에 대하여 \\(f'(1) = 2\\)를 만족시키는 상수 \\(a\\)는?",
+        choices: [
+          "\\(19\\)",
+          "\\(17\\)",
+          "\\(2\\)",
+          "\\(-19\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "21 - a =2 => a=19."
+      },
+      {
+        problem: "이차함수 \\(f(x) = x^2 + 3x\\)에 대하여 \\(f(2) + f'(2)\\)의 값을 구하시오.",
+        choices: [
+          "\\(16\\)",
+          "\\(17\\)",
+          "\\(18\\)",
+          "\\(20\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "f(2)=10, f'(2)=7, 합=17."
+      },
+      {
+        problem: "함수 \\(y = (x-1)(2x+5)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(2x + 5\\)",
+          "\\(4x + 3\\)",
+          "\\(4x + 2\\)",
+          "\\(x + 5\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "곱의 미분 => 4x+3."
+      },
+      {
+        problem: "함수 \\(y = (x-3)(2x-1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(4x - 6\\)",
+          "\\(2x - 7\\)",
+          "\\(4x - 7\\)",
+          "\\(x - 7\\)"
+        ],
+        correctIndex: 2,
+        correctFeedback: "전개 및 미분 => 4x-7."
+      },
+      {
+        problem: "함수 \\(y = -5x(x^2 + 1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(-15x^2 - 5\\)",
+          "\\(-5x^2 - 15\\)",
+          "\\(-15x^2\\)",
+          "\\(5x^2 - 15\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "곱미분 => -15x^2 -5."
+      },
+      {
+        problem: "함수 \\(y = (3x^2 - 2)(2x -1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(18x^2 - 6x - 4\\)",
+          "\\(18x^2 - 4x - 6\\)",
+          "\\(12x^2 - 6x + 4\\)",
+          "\\(6x^2 - 6x - 4\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "결과: 18x^2 -6x -4."
+      },
+      {
+        problem: "함수 \\(y = (2x^2 - 3)(x-2)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(6x^2 - 8x - 3\\)",
+          "\\(6x^2 - 3x - 8\\)",
+          "\\(4x^2 - 8x + 2\\)",
+          "\\(4x^2 - 8x - 3\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "전개 후 미분=>6x^2 -8x -3."
+      },
+      {
+        problem: "함수 \\(y = (x^2 - 4x + 5)(3x + 7)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(9x^2 - 10x - 13\\)",
+          "\\(6x^2 - 10x + 15\\)",
+          "\\(9x^2 + 2x - 13\\)",
+          "\\(6x^2 + 2x - 13\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "합산=>9x^2 -10x -13."
+      },
+      {
+        problem: "함수 \\(y = (2x - 1)(x^2 - 3x +1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(6x^2 - 14x + 5\\)",
+          "\\(6x^2 - 8x + 3\\)",
+          "\\(4x^2 - 14x + 3\\)",
+          "\\(2x^2 - 14x + 5\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "계산하면 6x^2 -14x +5."
+      },
+      {
+        problem: "함수 \\(y = (2x^2 + 5)(x^2 -2)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(8x^3 + 2x\\)",
+          "\\(8x^2 + 2x^3\\)",
+          "\\(4x^3 + 2x\\)",
+          "\\(8x^3 - 2x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "최종 8x^3 +2x."
+      },
+      {
+        problem: "함수 \\(y = (x^2 + 3x -2)(x^2 -4)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(4x^3 + 9x^2 - 12x - 12\\)",
+          "\\(4x^3 + 3x^2 - 12x - 12\\)",
+          "\\(2x^3 + 9x^2 - 12x - 12\\)",
+          "\\(4x^3 + 9x^2 + 12x - 12\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "합=>4x^3 +9x^2 -12x -12."
+      },
+      {
+        problem: "함수 \\(y = (x^2 + x)(x^3 +1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(5x^4 + 4x^3 + 2x + 1\\)",
+          "\\(5x^4 + 3x^3 + 2x\\)",
+          "\\(3x^4 + 3x^3 + 1\\)",
+          "\\(2x^4 + x^3 + 2x + 1\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "결과 5x^4+4x^3+2x+1."
+      },
+      {
+        problem: "함수 \\(y = (x^2 - x)(x^3 +1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(5x^4 - 4x^3 + 2x -1\\)",
+          "\\(5x^4 + x^3 + 2x -1\\)",
+          "\\(2x^4 - x^3 + 2x -1\\)",
+          "\\(3x^4 - 3x^3\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "결과 5x^4 -4x^3 +2x -1."
+      },
+      {
+        problem: "함수 \\(y = (2x^2 + 3)(x^3 - x + 3)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(10x^4 + 3x^2 + 12x - 3\\)",
+          "\\(10x^4 - x^2 + 12x - 3\\)",
+          "\\(6x^4 + 7x^2 - 3\\)",
+          "\\(4x^4 + 3x^2 + 12x - 3\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback:
+          "곱미분 => 첫항:4x(x^3 -x +3), 둘째항:(2x^2+3)(3x^2 -1) 합=>10x^4+3x^2+12x-3."
+      },
+      {
+        problem: "함수 \\(y = (3x^2 + 2)(x^3 - 3x +1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(15x^4 - 21x^2 + 6x - 6\\)",
+          "\\(15x^4 - 9x^2 + 6x - 6\\)",
+          "\\(9x^4 - 3x^2 - 6\\)",
+          "\\(6x^4 - 18x^2 + 6x - 6\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback:
+          "첫항:(6x)(x^3-3x+1)=6x^4-18x^2+6x, 둘째항:(3x^2+2)(3x^2-3)=9x^4-3x^2-6, 합=15x^4-21x^2+6x-6."
+      },
+      {
+        problem: "함수 \\(y = (x-1)^3\\)의 미분계수를 구하시오.",
+        choices: [
+          "\\(3(x-1)\\)",
+          "\\(3(x-1)^2\\)",
+          "\\((x-1)^2\\)",
+          "\\(0\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "체인룰 => 3(x-1)^2."
+      },
+      {
+        problem: "함수 \\(y = (3x - 2)^4\\)의 미분계수를 구하시오.",
+        choices: [
+          "\\(4(3x-2)^3\\)",
+          "\\(12(3x-2)^3\\)",
+          "\\((3x-2)^3\\)",
+          "\\((3x-2)^4\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "4(... )^3 *3 =>12(3x-2)^3."
+      },
+      {
+        problem: "함수 \\(y = (-3x + 4)^5\\)의 미분계수를 구하시오.",
+        choices: [
+          "\\(-3(-3x+4)^4\\)",
+          "\\(5(-3x+4)^4\\)",
+          "\\(-15(-3x+4)^4\\)",
+          "\\(15(-3x+4)^4\\)"
+        ],
+        correctIndex: 2,
+        correctFeedback: "5(... )^4 *(-3)=> -15(... )^4."
+      },
+      {
+        problem: "함수 \\(y = (2x^2 - x + 5)^3\\)의 미분계수를 구하시오.",
+        choices: [
+          "\\((2x^2 - x + 5)^2\\)",
+          "\\(3(2x^2 - x + 5)^2(4x - 1)\\)",
+          "\\(3(2x^2 - x + 5)(4x -1)\\)",
+          "\\((4x -1)\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "3(... )^2 * 내부미분(4x-1)."
+      },
+      {
+        problem: "함수 \\(y = (x+2)^2(3x^2 -1)\\)의 미분계수를 구하시오.",
+        choices: [
+          "\\(2(x+2)(3x^2 -1)\\)",
+          "\\(2(x+2)(3x^2 -1) + (x+2)^2(6x)\\)",
+          "\\((x+2)^2(3x^2 -1)\\)",
+          "\\((6x)(3x^2 -1)\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "곱미분 => 첫항+둘째항."
+      },
+      {
+        problem: "함수 \\(y = (x-5)^2 (x^2 +1)^3\\)의 미분계수를 구하시오.",
+        choices: [
+          "\\((x-5)^2(x^2+1)^3\\)",
+          "\\(2(x-5)(x^2+1)^3\\)",
+          "\\(2(x-5)(x^2+1)^3 + (x-5)^2 3(x^2+1)^2\\)",
+          "\\(2(x-5)(x^2+1)^3 + (x-5)^2 3(x^2+1)^2(2x)\\)"
+        ],
+        correctIndex: 3,
+        correctFeedback:
+          "곱의미분 + 체인룰로 마지막 항에 2x까지 곱해야 함."
+      },
+      {
+        problem: "함수 \\(y = x(x+3)(3x+1)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(9x^2 + 20x + 3\\)",
+          "\\(3x^2 + 10x + 3\\)",
+          "\\(9x^2 + 10x + 3\\)",
+          "\\(9x^2 + 20x\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "전개 후 미분 => 9x^2 +20x +3."
+      },
+      {
+        problem: "함수 \\(y = x(x+1)(x+2)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(3x^2 + 6x +2\\)",
+          "\\(2x^2 + 6x +2\\)",
+          "\\(x^2 +3x +2\\)",
+          "\\(3x^2 +3x +2\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "전개 후 미분 =>3x^2 +6x+2."
+      },
+      {
+        problem: "함수 \\(y = (x-5)(2x+1)(-x+7)\\)의 도함수를 구하시오.",
+        choices: [
+          "\\(-6x^2 +46x -58\\)",
+          "\\(-6x^2 +37x -63\\)",
+          "\\(-4x^2 +37x -63\\)",
+          "\\(-6x^2 +46x +58\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "최종 -6x^2+46x-58."
+      },
+      {
+        problem: "함수 \\(f(x) = (2x -5)(x+1)\\). \\(x=1\\)에서 \\(f'(1)\\)값은?",
+        choices: [
+          "\\(-1\\)",
+          "\\(0\\)",
+          "\\(1\\)",
+          "\\(4\\)"
+        ],
+        correctIndex: 2,
+        correctFeedback: "도함수=4x-3, 1대입=>1."
+      },
+      {
+        problem: "함수 \\(f(x) = (2x+1)(x^2 +3x +1)\\). \\(x=1\\)에서 \\(f'(1)\\)은?",
+        choices: [
+          "\\(20\\)",
+          "\\(25\\)",
+          "\\(15\\)",
+          "\\(5\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "계산 =>25."
+      },
+      {
+        problem: "함수 \\(f(x) = (x^2+1)(x^2 + x -2)\\). \\(x=1\\)에서 \\(f'(1)\\)?",
+        choices: [
+          "\\(4\\)",
+          "\\(5\\)",
+          "\\(6\\)",
+          "\\(7\\)"
+        ],
+        correctIndex: 2,
+        correctFeedback: "계산 =>6."
+      },
+      {
+        problem: "함수 \\(f(x) = (x^2 +3)(x^3 +9)\\). \\(x=1\\)에서 \\(f'(1)\\)?",
+        choices: [
+          "\\(20\\)",
+          "\\(24\\)",
+          "\\(32\\)",
+          "\\(36\\)"
+        ],
+        correctIndex: 2,
+        correctFeedback: "2(1)(10)+ (1^2+3)(3*1^2)=20+12=32."
+      },
+      {
+        problem: "함수 \\(f(x) = (x^3 +5)(x^2 -1)\\). \\(x=1\\)에서 \\(f'(1)\\)?",
+        choices: [
+          "\\(10\\)",
+          "\\(12\\)",
+          "\\(14\\)",
+          "\\(16\\)"
+        ],
+        correctIndex: 1,
+        correctFeedback: "결과=>12."
+      },
+      {
+        problem: "함수 \\(f(x) = (2x+1)^3\\). \\(x=1\\)에서 \\(f'(1)\\)?",
+        choices: [
+          "\\(18\\)",
+          "\\(24\\)",
+          "\\(36\\)",
+          "\\(54\\)"
+        ],
+        correctIndex: 3,
+        correctFeedback: "6(3)^2=54."
+      },
+      {
+        problem: "함수 \\(f(x) = (-3x+4)^6\\). \\(x=1\\)에서 \\(f'(1)\\)?",
+        choices: [
+          "\\(-18\\)",
+          "\\(18\\)",
+          "\\(-6\\)",
+          "\\(0\\)"
+        ],
+        correctIndex: 0,
+        correctFeedback: "도함수 -18(-3x+4)^5, 1대입=>-18."
+      }
+    ];
+
+    // ----------------------------------------------------
+    // 2) 유틸 함수 (배열 셔플)
+    // ----------------------------------------------------
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    // ----------------------------------------------------
+    // 전역 변수
+    // ----------------------------------------------------
+    let questions = []; // 셔플된 문제 목록
+    let currentIndex = 0; // 현재 문제 인덱스
+    let score = 0;       // 점수
+    let life = 3;        // 남은 기회(3회)
+    let totalTime = 0;   // 전체 경과 시간(초)
+    let difficulty = "low"; // 난이도
+    let timeLeft = 999999;  // 에너지바 시간(난이도별)
+    let timerInterval = null; // 매초 수행
+    let energyInterval = null; // 에너지바
+    let userName = "";
+
+    // 난이도별 초기 설정
+    let initTime = 0;    // 문제당 시작 시간
+    let pointPerQuestion = 0; // 문제당 점수
+
+    // ----------------------------------------------------
+    // 3) 게임 시작
+    // ----------------------------------------------------
+    function startGame() {
+      // 난이도/이름 읽기
+      const radios = document.getElementsByName("difficulty");
+      let selected = false;
+      for (let r of radios) {
+        if (r.checked) {
+          difficulty = r.value;
+          selected = true;
+          break;
+        }
+      }
+      userName = document.getElementById("userName").value.trim();
+      if (!selected) {
+        alert("난이도를 선택하세요!");
+        return;
+      }
+      if (!userName) {
+        alert("이름을 입력하세요!");
+        return;
+      }
+
+      // 난이도별 시간/점수 설정
+      switch (difficulty) {
+        case "top": 
+          initTime = 20; 
+          pointPerQuestion = 20; 
+          break;
+        case "high": 
+          initTime = 30; 
+          pointPerQuestion = 15; 
+          break;
+        case "mid": 
+          initTime = 40; 
+          pointPerQuestion = 13; 
+          break;
+        case "low": 
+        default:
+          initTime = 999999; // 시간제한 없음
+          pointPerQuestion = 10;
+          break;
+      }
+
+      // 문제 초기화
+      questions = [...questionData];
+      shuffleArray(questions); // 문제 순서 셔플
+      currentIndex = 0;
+      score = 0;
+      life = 3;
+      document.getElementById("score").innerText = score;
+      document.getElementById("life").innerText = life;
+
+      // 화면 전환
+      document.getElementById("start-screen").classList.add("hidden");
+      document.getElementById("game-screen").classList.remove("hidden");
+      document.getElementById("end-screen").classList.add("hidden");
+
+      // 전체 경과 시간 타이머 시작
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+      totalTime = 0;
+      timerInterval = setInterval(() => {
+        totalTime++;
+        document.getElementById("elapsed").innerText = totalTime;
+      }, 1000);
+
+      // 에너지바/문제 타이머
+      resetEnergyBar();
+      loadQuestion();
+    }
+
+    // ----------------------------------------------------
+    // 문제 표시
+    // ----------------------------------------------------
+    function loadQuestion() {
+      if (life <= 0) {
+        endGame();
+        return;
+      }
+
+      // 문제를 모두 소진했으면 => 무한 랜덤(끝없이) 모드
+      if (currentIndex >= questions.length) {
+        // 무한 랜덤 중에 하나 골라서 출제
+        const rnd = Math.floor(Math.random() * questions.length);
+        showQuestion(questions[rnd]);
+      } else {
+        // 아직 남은 문제가 있으면 현재 인덱스 문제
+        showQuestion(questions[currentIndex]);
+      }
+    }
+
+    // ----------------------------------------------------
+    // 실제 문제를 화면에 렌더링
+    // ----------------------------------------------------
+    function showQuestion(q) {
+      const container = document.getElementById("question-container");
+      container.innerHTML = "";
+
+      const problemDiv = document.createElement("div");
+      problemDiv.innerHTML = q.problem; 
+      container.appendChild(problemDiv);
+
+      // 보기 4개를 복사/셔플
+      let choiceArr = q.choices.map((c, idx) => ({ text: c, index: idx }));
+      shuffleArray(choiceArr);
+
+      const ul = document.createElement("ul");
+      ul.className = "choices";
+      choiceArr.forEach((item) => {
+        const li = document.createElement("li");
+        li.innerHTML = item.text;
+        li.onclick = () => checkAnswer(q, item.index);
+        ul.appendChild(li);
+      });
+      container.appendChild(ul);
+
+      // 피드백 초기화
+      document.getElementById("feedback").innerHTML = "";
+
+      // 수식 렌더링
+      MathJax.typeset();
+    }
+
+    // ----------------------------------------------------
+    // 정답 체크
+    // ----------------------------------------------------
+    function checkAnswer(q, chosenIndex) {
+      const feedbackDiv = document.getElementById("feedback");
+      feedbackDiv.innerHTML = "";
+
+      if (chosenIndex === q.correctIndex) {
+        // 맞춤
+        score += pointPerQuestion;
+        document.getElementById("score").innerText = score;
+        feedbackDiv.innerHTML =
+          "<span class='correct'>정답!</span>";
+      } else {
+        // 틀림
+        life--;
+        document.getElementById("life").innerText = life;
+        feedbackDiv.innerHTML =
+          "<span class='incorrect'>오답!</span> 정답은 ==> " +
+          q.choices[q.correctIndex] +
+          "<br/>해설: " + q.correctFeedback;
+        if (life <= 0) {
+          endGame();
+          return;
+        }
+      }
+    }
+
+    // ----------------------------------------------------
+    // 다음 문제 버튼
+    // ----------------------------------------------------
+    function nextQuestion() {
+      if (life <= 0) {
+        endGame();
+        return;
+      }
+
+      // 시간 소진되었어도 기회 깎였으면 이미 endGame or life>0
+      // 현재인덱스 증가
+      if (currentIndex < questions.length) {
+        currentIndex++;
+      }
+      // 새 문제 로딩
+      resetEnergyBar();
+      loadQuestion();
+    }
+
+    // ----------------------------------------------------
+    // 에너지바 리셋
+    // ----------------------------------------------------
+    function resetEnergyBar() {
+      if (energyInterval) clearInterval(energyInterval);
+      timeLeft = initTime;
+      const fill = document.getElementById("energy-fill");
+
+      // 난이도가 low라면(시간제한 없음)
+      if (difficulty === "low") {
+        // 항상 풀로 채워 놓고 소모 안 함
+        fill.style.width = "100%";
+        return;
+      }
+
+      // 최상/상/중 -> timeLeft초 동안 서서히 줄임
+      energyInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft < 0) {
+          // 시간 초과 => 기회 1 감소
+          life--;
+          document.getElementById("life").innerText = life;
+          if (life <= 0) {
+            endGame();
+            return;
+          }
+          // 시간 초과 후 문제 자동 다음
+          clearInterval(energyInterval);
+          nextQuestion();
+          return;
+        }
+        // 에너지바 비율
+        const ratio = Math.max(timeLeft / initTime, 0);
+        fill.style.width = (ratio * 100) + "%";
+      }, 1000);
+    }
+
+    // ----------------------------------------------------
+    // 게임 종료
+    // ----------------------------------------------------
+    function endGame() {
+      // 타이머 정리
+      if (timerInterval) clearInterval(timerInterval);
+      if (energyInterval) clearInterval(energyInterval);
+
+      document.getElementById("game-screen").classList.add("hidden");
+      document.getElementById("end-screen").classList.remove("hidden");
+      document.getElementById("final-score").innerText = score;
+    }
+
+    // ----------------------------------------------------
+    // 점수 전송 (요청)
+    // ----------------------------------------------------
+    async function sendScore() {
+      // game= "도함수", name= userName, score= score, elapsedTime= totalTime
+      await saveData("도함수", userName, score, totalTime);
+    }
+
+    // ----------------------------------------------------
+    // 4) 서버에 데이터 저장 함수
+    // ----------------------------------------------------
+    async function saveData(game, name, score, elapsedTime) {
+      const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+      const requestData = {
+        game,
+        name,
+        score: parseInt(score, 10),
+        elapsedTime: parseInt(elapsedTime, 10)
+      };
+
+      try {
+        const response = await fetch(FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        });
+
+        const responseData = await response.json();
+
+        if (response.ok) {
+          document.getElementById('response').innerText =
+            "성공: " + JSON.stringify(responseData, null, 2);
+        } else {
+          document.getElementById('response').innerText =
+            "오류: " + JSON.stringify(responseData, null, 2);
+        }
+      } catch (error) {
+        console.error('요청 실패:', error);
+        document.getElementById('response').innerText =
+          "네트워크 오류: " + error.message;
+      }
+    }
+  </script>
+</body>
+</html>
